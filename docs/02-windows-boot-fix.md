@@ -1,63 +1,101 @@
-# Restoring Windows Boot Entry in systemd-boot
+# Restoring the Windows Boot Entry in systemd-boot
 
-## 🔴 The Problem
-After installing Pop!_OS alongside Windows 11, the systemd-boot menu did not have a Windows entry. Only `Pop!_OS` and `Reboot Into Firmware Interface` were shown. Windows itself was fine: selecting `Windows Boot Manager` from the BIOS/UEFI boot menu started it normally.
+## Goal
+Make the systemd-boot menu on Host 1 offer both operating systems after installing Pop!_OS next to Windows 11, without modifying the Windows installation.
 
-## 🔍 Diagnosis
-1. Checked UEFI boot entries with `sudo efibootmgr -v`. The `Windows Boot Manager` entry was present in NVRAM and pointed to `\EFI\Microsoft\Boot\bootmgfw.efi` on the Windows EFI partition (`/dev/nvme0n1p1`).
-2. Checked the partition layout with `lsblk`. Windows and Pop!_OS use **separate ESPs**: `nvme0n1p1` (200M, Windows) and `nvme0n1p5` (1G, Pop!_OS, mounted at `/boot/efi`).
-3. Mounted the Windows ESP at `/mnt/efi-win` and confirmed that `bootmgfw.efi` exists there.
-4. An earlier attempt with a bind-mount in `/etc/fstab` was broken (the bind-mount ended up pointing at the root partition instead of the Windows ESP) and did not help.
+Symptom: the menu showed only `Pop!_OS` and `Reboot Into Firmware Interface`. Windows itself was healthy: choosing `Windows Boot Manager` in the BIOS/UEFI boot menu started it normally.
 
-**Root cause:** systemd-boot auto-detects Windows only if `EFI/Microsoft/Boot/bootmgfw.efi` is located on the **same ESP** as systemd-boot itself. On the Pop!_OS ESP that file did not exist.
+## Environment
 
-## 🛠️ The Solution
-Copy the Windows bootloader folder onto the Pop!_OS ESP.
+| Item | Value |
+|---|---|
+| Host | Host 1 (dual boot) |
+| Bootloader | systemd-boot (Pop!_OS 24.04 LTS) |
+| Windows ESP | `/dev/nvme0n1p1`, 200 MiB, vfat |
+| Pop!_OS ESP | `/dev/nvme0n1p5`, 1 GiB, vfat, mounted at `/boot/efi` |
 
-### Step 1: Copy the Windows Bootloader
-1. Clean up previous attempts: remove the bind-mount line from `/etc/fstab`, unmount it, then run `sudo systemctl daemon-reload`.
-2. Mount the Windows ESP and copy the bootloader folder:
+## Diagnosis
+1. `sudo efibootmgr -v` showed a `Windows Boot Manager` entry in NVRAM pointing to `\EFI\Microsoft\Boot\bootmgfw.efi` on the Windows ESP, plus entries for Pop!_OS and a generic `UEFI OS`.
+2. `lsblk` showed that Windows and Pop!_OS use **separate ESPs** (`nvme0n1p1` and `nvme0n1p5`).
+3. Mounting the Windows ESP at `/mnt/efi-win` confirmed that `bootmgfw.efi` exists there.
+4. An earlier attempt used a bind-mount from `/etc/fstab`. It was broken: the mount point ended up backed by the root partition instead of the Windows ESP, so it did not help.
+
+**Root cause:** systemd-boot detects Windows automatically only if `EFI/Microsoft/Boot/bootmgfw.efi` is located on the **same ESP** as systemd-boot itself. On the Pop!_OS ESP that file did not exist.
+
+## Solution
+Copy the Windows bootloader folder onto the Pop!_OS ESP. The Windows ESP is only read, never modified.
+
+### Step 1: Clean Up Previous Attempts
+Remove the bind-mount line from `/etc/fstab`, unmount it if it is still active, and reload systemd:
+
+```bash
+sudo nano /etc/fstab
+sudo umount /boot/efi/EFI/Microsoft
+sudo systemctl daemon-reload
+```
+
+If `umount` reports that nothing is mounted, continue with the next step.
+
+### Step 2: Copy the Windows Bootloader
 
 ```bash
 sudo mkdir -p /mnt/efi-win
 sudo mount /dev/nvme0n1p1 /mnt/efi-win
+ls /mnt/efi-win/EFI/Microsoft/Boot/bootmgfw.efi
 sudo cp -r /mnt/efi-win/EFI/Microsoft /boot/efi/EFI/
 sudo umount /mnt/efi-win
 ```
 
-### Step 2: Verify systemd-boot Configuration
-Check that systemd-boot recognizes the copied files:
+### Step 3: Verify Detection
 
 ```bash
+sudo ls /boot/efi/EFI/
 sudo bootctl list
 ```
 
-The output shows a Windows entry with the correct EFI path.
+`bootctl list` must show a Windows entry whose EFI path points to `bootmgfw.efi`.
 
-### Step 3: Cleanup Duplicate Boot Entries
-**Problem:** a manually created `windows.conf` (added earlier as a workaround) resulted in two identical Windows entries in the boot menu: `Windows 11 (windows.conf)` and `Windows 11 (auto-windows)`.
+### Step 4: Remove the Duplicate Manual Entry
+**Problem:** a manually created `windows.conf` (added earlier as a workaround) produced two Windows entries in the menu: `Windows 11 (windows.conf)` and `Windows 11 (auto-windows)`.
 
-**Cause:** once `bootmgfw.efi` was present on the Pop!_OS ESP, systemd-boot created the `auto-windows` entry by itself, so the manual file became redundant.
+**Cause:** once `bootmgfw.efi` was present on the Pop!_OS ESP, systemd-boot created the `auto-windows` entry on its own, so the manual file became redundant.
 
-**Solution:** remove the manual entry:
+**Solution:**
 
 ```bash
 sudo rm /boot/efi/loader/entries/windows.conf
+sudo bootctl list
 ```
 
-`auto-windows` is a cleaner and more robust approach.
+`bootctl list` may still show `windows.conf (reported/absent)`. This is a leftover record in the UEFI variable `LoaderEntries`, purely cosmetic, and is expected to disappear after a reboot.
 
-**Final verification:** `sudo bootctl list` shows the old `windows.conf` as `(reported/absent)`. This is a leftover record in the UEFI variables (`LoaderEntries`), purely cosmetic, and it disappears after a reboot. `Windows Boot Manager (auto-windows)` is active and works.
-
-### Step 4: Set Default Boot and Timeout
+### Step 5: Set the Default Entry and Timeout
 
 ```bash
 sudo bootctl set-default Pop_OS-current.conf
 sudo bootctl set-timeout 5
 ```
 
-## 🧠 DevOps Insights
-- **Don't bind-mount bootloaders blindly:** bind-mounts are fine for data, but copying files directly onto the ESP is more robust for systemd-boot.
-- **Always verify with `bootctl list`:** it shows exactly what systemd-boot sees. If the entry is not listed, it will not boot.
-- **Auto-detection has a condition:** it works only if `EFI/Microsoft/Boot/bootmgfw.efi` is on the same ESP as systemd-boot. Manual `.conf` files are then unnecessary and lead to duplicates.
-- **Keep the copy up to date:** Windows updates only its own ESP. If the Windows bootloader is updated, repeat Step 1.
+## Result
+
+| Check | Outcome |
+|---|---|
+| Boot menu entries | Pop!_OS, Windows Boot Manager (`auto-windows`), Reboot Into Firmware Interface |
+| Default entry | `Pop_OS-current.conf` |
+| Menu timeout | 5 seconds |
+| Windows boot via systemd-boot | Works |
+| Windows boot via firmware menu | Unchanged, works |
+
+## Maintenance
+The copy on the Pop!_OS ESP is static. Windows updates modify only its own ESP, so after a Windows bootloader update repeat Step 2 to refresh the copy.
+
+## Lessons Learned
+- **Do not bind-mount bootloaders blindly:** bind-mounts suit data directories, but copying files onto the ESP is more robust for systemd-boot.
+- **Verify with `bootctl list`:** it shows exactly what systemd-boot sees. If an entry is not listed there, it will not boot.
+- **Know the auto-detection condition:** it works only when `EFI/Microsoft/Boot/bootmgfw.efi` is on the same ESP as systemd-boot. With that in place, manual `.conf` files are unnecessary and cause duplicates.
+- **Check the partition layout first:** `lsblk` and `efibootmgr -v` identified the real problem in minutes and showed that no Windows data was at risk.
+- **Read the mount state before acting:** the broken bind-mount was visible in `lsblk` and `findmnt` before any further changes were made.
+
+## Related Documents
+- [`01-popos-installation.md`](01-popos-installation.md): installation and partition layout
+- [`03-ollama-setup.md`](03-ollama-setup.md): local LLM setup on Host 1
