@@ -1,0 +1,84 @@
+# ==========================================
+# Operating Systems (Windows, Linux)
+# ==========================================
+Thumbs.db
+desktop.ini
+.directory
+
+# ==========================================
+# Editors and IDEs
+# ==========================================
+.vscode/
+.idea/
+*.swp
+*~
+
+# ==========================================
+# SECRETS AND KEYS (Never commit!)
+# ==========================================
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+id_rsa*
+id_ed25519*
+known_hosts
+secrets/
+credentials*
+
+# ==========================================
+# Logs and temporary files
+# ==========================================
+*.log
+logs/
+tmp/
+cache/
+
+# ==========================================
+# Virtual Machines and ISO (Heavy files)
+# ==========================================
+*.iso
+*.img
+*.vhd
+*.vhdx
+*.vmdk
+*.qcow2
+*.ova
+*.ovf
+*.box
+*.raw
+VM/
+VMs/
+iso/
+images/
+
+# ==========================================
+# Tools and Languages (Ansible, Terraform, etc.)
+# ==========================================
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+
+# Node.js
+node_modules/
+
+# Terraform
+.terraform/
+*.tfstate
+*.tfstate.*
+crash.log
+*.tfvars
+!*.tfvars.example
+
+# Ansible
+*.retry
+
+# ==========================================
+# Archives
+# ==========================================
+*.zip
+*.tar.gz
+*.7z
