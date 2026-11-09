@@ -1,7 +1,17 @@
+# Default behavior
 * text=auto
 
+# Linux/Unix files (force LF)
 *.sh text eol=lf
-*.ps1 text eol=crlf
-*.md text eol=lf
 *.yml text eol=lf
 *.yaml text eol=lf
+*.md text eol=lf
+*.tf text eol=lf
+*.tfvars text eol=lf
+Dockerfile text eol=lf
+Makefile text eol=lf
+
+# Windows files (force CRLF)
+*.ps1 text eol=crlf
+*.bat text eol=crlf
+*.cmd text eol=crlf

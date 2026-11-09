@@ -1,0 +1,32 @@
+#cloud-config
+autoinstall:
+  version: 1
+  identity:
+    hostname: mgmt
+    username: ubuntu
+    # Password is disabled, access is via SSH key only
+    password: "!"
+    lock_passwd: true
+  ssh:
+    install-server: true
+    authorized-keys:
+      - ${ssh_public_key}
+  network:
+    version: 2
+    ethernets:
+      eth0:
+        dhcp4: false
+        addresses:
+          - ${vm_ip_address}/24
+        routes:
+          - to: default
+            via: ${gateway_ip}
+        nameservers:
+          addresses: ${dns_servers}
+  storage:
+    layout:
+      name: direct
+  packages:
+    - qemu-guest-agent
+  late-commands:
+    - curtin in-target -- systemctl enable qemu-guest-agent
