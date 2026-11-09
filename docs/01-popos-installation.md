@@ -26,7 +26,7 @@ Install Pop!_OS 24.04 LTS (NVIDIA edition) next to the existing Windows 11 on Ho
 | Mount point | Size | Filesystem | Purpose |
 |---|---|---|---|
 | `/boot/efi` | 1 GiB | FAT32 | Bootloader (separate from the Windows ESP) |
-| swap | 32 GiB | linux-swap | Sized to match RAM, intended for hibernation |
+| swap | 32 GiB (later reduced to 8 GiB) | linux-swap | Originally sized to match RAM for hibernation; see [`05-swap-optimization.md`](05-swap-optimization.md) |
 | `/` | 100 GiB | ext4 | System, Docker |
 | `/home` | about 319 GiB | ext4 | User data |
 
@@ -83,14 +83,15 @@ Layout of the system disk after installation (`lsblk`):
 | `nvme0n1p3` | about 500 GiB | ntfs | Windows system volume (`C:`) |
 | `nvme0n1p4` | 900 MiB | ntfs | Windows recovery |
 | `nvme0n1p5` | 1 GiB | vfat | Pop!_OS ESP, mounted at `/boot/efi` |
-| `nvme0n1p6` | 32 GiB | swap | Mounted as encrypted swap (`/dev/mapper/cryptswap`) |
+| `nvme0n1p6` | 32 GiB at installation (8 GiB now) | swap | Mounted as encrypted swap (`/dev/mapper/cryptswap`) |
 | `nvme0n1p7` | 100 GiB | ext4 | Root (`/`) |
 | `nvme0n1p8` | about 319 GiB | ext4 | `/home` |
 
 Pop!_OS booted successfully. Windows is still bootable from the firmware menu.
 
 ## Known Follow-Up
-Windows and Pop!_OS use separate ESPs, so the systemd-boot menu initially had no Windows entry. The fix is documented in [`02-windows-boot-fix.md`](02-windows-boot-fix.md).
+- Windows and Pop!_OS use separate ESPs, so the systemd-boot menu initially had no Windows entry. The fix is documented in [`02-windows-boot-fix.md`](02-windows-boot-fix.md).
+- Sleep and hibernation were dropped, so the 32 GiB swap was reduced to 8 GiB. The swap is encrypted with a random key at every boot, which rules out hibernation. The change is documented in [`05-swap-optimization.md`](05-swap-optimization.md).
 
 ## Lessons Learned
 - **AI output needs verification:** the generated script ran into alignment problems and hardcoded partition numbers. The logic had to be rewritten with explicit alignment and dynamic partition detection.
@@ -101,3 +102,4 @@ Windows and Pop!_OS use separate ESPs, so the systemd-boot menu initially had no
 ## Related Documents
 - [`02-windows-boot-fix.md`](02-windows-boot-fix.md): restoring the Windows entry in systemd-boot
 - [`03-ollama-setup.md`](03-ollama-setup.md): local LLM setup on Host 1
+- [`05-swap-optimization.md`](05-swap-optimization.md): reducing the swap partition after dropping hibernation
